@@ -1,0 +1,83 @@
+
+/**
+ * Fix user-agent
+ */
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+button:focus { outline: none; }
+
+
+
+/**
+ * Canvas
+ */
+
+ .toolbar {
+   display:block;
+   background:#fff;
+   border: solid #aaa 1px;
+   border-radius:50%;
+   margin:2px;
+   padding:0px;
+   width:20px;
+   height:20px;
+   font-size:10px;
+   text-align:center;
+   vertical-align: middle;
+ }
+
+.whiteboard {
+  height: 100%;
+  width: 100%;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: 0;
+}
+
+.active {
+  border: 3px #aaa double
+}
+
+.colors {
+  position: fixed;
+}
+
+.color {
+  height: 20px;
+  width: 20px;
+  border:2px;
+}
+
+.width {
+  height: 20px;
+  width: 20px;
+  margin: 0px;
+  padding: 0px;
+  text-align: center;
+  vertical-align:middle;
+  border:2px;
+}
+
+.circle {
+  display:inline-block;
+  border-radius:50%;
+  margin:0px;
+  padding:0px;
+}
+
+.color.black { background-color: black; }
+.color.red { background-color: red; }
+.color.green { background-color: green; }
+.color.blue { background-color: blue; }
+.color.yellow { background-color: yellow; }

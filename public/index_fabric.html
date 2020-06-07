@@ -1,0 +1,361 @@
+<canvas id="main" width="720" height="480"></canvas>
+<br/>
+
+<!--
+<a  href = "javascript:{canvas.isDrawingMode = !canvas.isDrawingMode}">drawing mode</a> |
+<a  href = "javascript:{canvas.add(new fabric.IText('text'))}">add text</a>
+<a  href = "javascript:{sendViewSync()}">sync view</a>
+-->
+
+<div id='menu' style='position:absolute;left:5px;top:5px'>
+  <div id='colors'></div><br/>
+  <div id='widths'></div><br/>
+  <div id='eraser'>
+    <button class='toolbar' id='erase' onclick='javascript:setErase()'>✗</button>
+  </div><br/>
+  <div id='tools'>
+    <button id='eraseBoard' class='toolbar' onclick="javascript:eraseBoard()">🗑</button><br/>
+    <button id='undo' class='toolbar' onclick="javascript:undo()">⟲</button>
+    <button id='redo' class='toolbar' onclick="javascript:redo()">⟳</button><br/>
+    <button id='zoomToAll' class='toolbar' onclick="javascript:zoomToAll()">✣</button>
+
+  </div>
+</div>
+
+
+
+</div>
+
+<link rel="stylesheet" href="style.css">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/3.6.2/fabric.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@arch-inc/fabricjs-psbrush@latest/dist/index.js"></script>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  var socket = io();
+  var event // for debugging
+
+  // Create a Fabric.js canvas
+  let canvas = new fabric.Canvas(document.getElementById("main"), {
+    isDrawingMode: true,
+    enablePointerEvents: true
+  });
+  canvas.includeDefaultValues = false
+
+  // Initialize a brush
+  defaultColor = "#000"
+  defaultSize = 2;
+  let brush = new fabric.PSBrush(canvas);
+  brush.width = defaultSize;
+  brush.color = defaultColor;
+
+  let eraserBrush = new fabric.PencilBrush(canvas);
+  eraserBrush.width = 20;
+  eraserBrush.color = "#fee";
+
+  canvas.freeDrawingBrush = brush;
+
+
+  function setBrushColor(event) {
+    unsetErase()
+
+    c = event.target.style.background
+    brush.color = c
+    canvas.isErasing = false
+    canvas.freeDrawingBrush = brush;
+
+    $('#colors').children().removeClass('active')
+    this.classList.add('active')
+  }
+  for (c of ['#000','#fff','#f00','#0f0','#00f']) {
+    button = document.createElement("button")
+    button.onclick = setBrushColor
+    button.style.background = c
+    if (c==defaultColor) {
+      button.className = "toolbar active"
+    } else {
+      button.className = "toolbar"
+    }
+    $('#colors').append(button)
+  }
+
+  //erase button:
+
+  function setErase(event) {
+    if (canvas.isErasing) {
+      unsetErase()
+    } else {
+      canvas.isErasing = true
+      canvas.freeDrawingBrush = eraserBrush;
+      $('#erase').addClass('active')
+    }
+  }
+  function unsetErase() {
+    canvas.isErasing = false
+    canvas.freeDrawingBrush = brush;
+    $('#erase').removeClass('active')
+  }
+
+
+  function setBrushWidth(event) {
+    unsetErase()
+
+    w = this.value
+    brush.width = w
+
+    $('#widths').children().removeClass('active')
+    this.classList.add('active')
+
+  }
+  for (w of [1,2,5,10,15]) {
+    circle = document.createElement("div")
+    circle.style.width = w
+    circle.style.height = w
+    circle.style.background="#000"
+    circle.className =  "circle"
+
+    button = document.createElement("button")
+    button.appendChild(circle)
+    button.onclick = setBrushWidth
+    button.value = w
+    if (w==defaultSize) {
+      button.className = "toolbar active"
+    } else {
+      button.className = "toolbar"
+    }
+    $('#widths').append(button)
+  }
+
+  canvas_el_1 = document.createElement("canvas");
+  canvas_el_1.width = "720";
+  canvas_el_1.height = "480";
+  canvas_el_1.id = "receive-canvas";
+  let canvas_1 = new fabric.Canvas(canvas_el_1);
+  canvas_1.includeDefaultValues = false
+
+
+  //erase board
+  function eraseBoard() {
+    $('#eraseBoard').disabled = true // re-enable when new board received
+    socket.emit('eraseBoard')
+  }
+
+  //undo
+  function undo() {
+    socket.emit('undo')
+  }
+  function redo() {
+    socket.emit('redo')
+  }
+
+  // reset zoom to include all objects
+  function zoomToAll() {
+    var firsto =  true
+    var maxX = 0, minX=0, maxY=0, minY=0
+    canvas.forEachObject((o) => {
+       cords = o.aCoords
+       omaxX = Math.max(cords.tl.x, cords.tr.x, cords.bl.x, cords.br.x)
+       ominX = Math.min(cords.tl.x, cords.tr.x, cords.bl.x, cords.br.x)
+       omaxY = Math.max(cords.tl.y, cords.tr.y, cords.bl.y, cords.br.y)
+       ominY = Math.min(cords.tl.y, cords.tr.y, cords.bl.y, cords.br.y)
+
+       if (!firsto) {
+         if (ominX < minX)
+             minX = ominX
+         if (omaxX > maxX)
+             maxX = omaxX
+         if (ominY < minY)
+             minY = ominY
+         if (omaxY > maxY)
+             maxY = omaxY
+        } else {
+          minX=ominX
+          maxX=omaxX
+          minY=ominY
+          maxY=omaxY
+          firsto=false
+        }
+      })
+
+      if (maxX-minX > 0 || maxX -  minY > 0)  {
+        zoom = Math.max((maxX-minX)/canvas.width, (maxY-minY)/canvas.height)
+      } else {
+        zoom = 1
+      }
+
+    console.log([minX, maxX, minY, maxY])
+    console.log(zoom)
+
+    //canvas.zoomToPoint({'x':(maxX+minX)/2,'y':(maxY+minY)/2}, 1/zoom)
+    canvas.setZoom(1)
+    canvas.viewportTransform[4] = -(minX - 0.05*(maxX-minX))
+    canvas.viewportTransform[5] = -(minY - 0.05*(maxY-minY))
+    console.log(canvas.viewportTransform)
+    canvas.setZoom(1/(zoom*1.1))
+    console.log(canvas.viewportTransform)
+
+    resetView()
+  }
+
+  // function sync zoom
+  function resetView(){
+    canvas.requestRenderAll()
+    //canvas.forEachObject((o)=> o.setCoords())
+  }
+  function sendViewSync() {
+    console.log(canvas.viewportTransform)
+    socket.emit('viewSync',canvas.viewportTransform)
+  }
+  function receiveViewSync(data) {
+    canvas.viewportTransform = data
+    resetView()
+  }
+
+  socket.on('viewSync',receiveViewSync)
+
+/*
+  canvas.setDimensions({
+              width: window.width,
+              height: window.height
+          });
+  canvas.renderAll()*/
+  function resizeToWindow() {
+    canvas.setWidth(window.innerWidth)
+    canvas.setHeight(window.innerHeight)
+    canvas.requestRenderAll()
+  }
+  resizeToWindow()
+  $(window).resize(resizeToWindow)
+
+
+/*
+  $(window).resize(function (){
+   if (canvas.width != $(".container").width()) {
+              var scaleMultiplier = $(".container").width() / canvas.width;
+              var objects = canvas.getObjects();
+              for (var i in objects) {
+                  objects[i].scaleX = objects[i].scaleX * scaleMultiplier;
+                  objects[i].scaleY = objects[i].scaleY * scaleMultiplier;
+                  objects[i].left = objects[i].left * scaleMultiplier;
+                  objects[i].top = objects[i].top * scaleMultiplier;
+                  objects[i].setCoords();
+              }
+
+              canvas.setWidth(canvas.getWidth() * scaleMultiplier);
+              canvas.setHeight(canvas.getHeight() * scaleMultiplier);
+              canvas.renderAll();
+              canvas.calcOffset();
+          }
+  });*/
+
+  // scrolling from http://fabricjs.com/fabric-intro-part-5
+
+
+  canvas.on('mouse:down:before', function(opt) {
+    var evt = opt.e;
+    if (evt.altKey === true) {
+      this.isDragging = true;
+      this.selection = false;
+      this.lastPosX = evt.clientX;
+      this.lastPosY = evt.clientY;
+      this.wasDrawingMode = this.isDrawingMode
+      this.isDrawingMode = false
+      canvas.discardActiveObject();
+    }
+  });
+  canvas.on('mouse:down',function(opt) {
+    if (this.isDragging) {
+      canvas.discardActiveObject();
+    }
+  });
+  canvas.on('mouse:move', function(opt) {
+    var e = opt.e;
+    if (this.isDragging) {
+      this.viewportTransform[4] += e.clientX - this.lastPosX;
+      this.viewportTransform[5] += e.clientY - this.lastPosY;
+      this.requestRenderAll();
+      this.lastPosX = e.clientX;
+      this.lastPosY = e.clientY;
+    }
+  });
+  canvas.on('mouse:up', function(opt) {
+    this.selection = true;
+
+    if (this.isDragging) {
+      this.isDragging = false;
+      this.isDrawingMode = this.wasDrawingMode
+      resetView()
+    }
+  });
+
+  canvas.on('mouse:wheel', function(opt) {
+    var delta = opt.e.deltaY;
+    var pointer = canvas.getPointer(opt.e);
+    var zoom = canvas.getZoom();
+    zoom = zoom + delta/200;
+    if (zoom > 20) zoom = 20;
+    if (zoom < 0.01) zoom = 0.01;
+    canvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, zoom);
+    opt.e.preventDefault();
+    opt.e.stopPropagation();
+  });
+
+  canvas.on('text:changed',  function(e) {
+    console.log('text:changed')
+    console.log(e)
+  })
+
+  canvas.on('object:modified',  function(e) {
+    console.log('object:modified')
+    console.log(e)
+  })
+
+
+  canvas.on('object:added', function(e) {
+
+
+    e.target.selectable = false
+    if ('nobroadcast' in e.target) {
+      return
+    } else {
+      if (this.isErasing) {
+        e.target.globalCompositeOperation = 'destination-out';
+      }
+      console.log('object:added')
+      console.log(e.target)
+      socket.emit('object:added',e.target)
+    }
+
+  })
+
+  canvas.on('path:created', function(e) {
+    if (this.isErasing) {
+      e.path.globalCompositeOperation = 'destination-out';
+    }
+  })
+
+
+  socket.on('object:added', function(e) {
+    console.log('object:added received:')
+    console.log(e)
+    e['nobroadcast']=true
+    e.selectable=false
+    canvas_1.loadFromJSON({'objects':[e]})
+    canvas.add(canvas_1._objects[0])
+  })
+
+  socket.on('canvasdata', function(e) {
+    console.log('received:')
+    e.objects.forEach(item=>item['nobroadcast']=true)
+    e.objects.forEach(item=>item.selectable=false)
+    console.log(e)
+    canvas.loadFromJSON(e)
+
+    $('#eraseBoard').disabled = false // re-enable erase when new board received
+  })
+</script>
+
+
+</script>
