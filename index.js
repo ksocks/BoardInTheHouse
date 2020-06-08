@@ -7,96 +7,189 @@ const app = express();
 const http = require('http').Server(app);
 const io = require('socket.io')(http);
 const port = process.env.PORT || 3000;
+const uniqid=require('uniqid')
+const querystring=require('querystring')
 
 
 
-app.use(express.static(__dirname + '/public'));
+class sharedBoardManager {
+  constructor() {
+    this.boards = {} // boardid->sharedBoard mapping
+    this.users = {}  // usersid->boardid mapping
+  }
 
-let canvas = new fabric.StaticCanvas();
-let canvas_1 = new fabric.StaticCanvas();
+  getBoard(socket) {
+    if (socket.id in this.users &&  this.users[socket.id] in this.boards) {
+      return this.boards[this.users[socket.id]]
+    } else {
+      return undefined
+    }
+  }
 
-canvas.includeDefaultValues = false
-canvas_1.includeDefaultValues = false
+  onJoin(socket,data) {
+    if (!('boardid' in data)) { //todo: more validation
+      return
+    }
 
-canvas.history = []
-canvas.redohistory = []
-canvas.nextObjID = 0
-canvas.objectsByID = {}
+    if (!(data.boardid in this.boards)) { //  create new board
+      this.boards[data.boardid] = new sharedBoard(data.boardid)
+    }
 
-function onConnection(socket){
-  socket.emit('canvasdata',canvas.toJSON(['id']))
+    this.users[socket.id]=data.boardid
 
-  socket.on('eraseBoard',  function() {
+    let board = this.getBoard(socket)
+    socket.join(data.boardid)
+    board.onJoin(socket)
 
-    canvas.history.push(['eraseBoard',canvas.toJSON(['id'])])
-    canvas.redohistory = [] // clear redo history on new object
+  }
 
-    canvas.clear()
-    io.sockets.emit('canvasdata',canvas.toJSON(['id']))
-  })
+  onEraseBoard(socket,data) {
+    let board = this.getBoard(socket)
+    if (board) {
+      board.onEraseBoard(socket,data)
+    }
+  }
+  onViewSync(socket,data) {
+    let board = this.getBoard(socket)
+    if (board) {
+      board.onViewSync(socket,data)
+    }
+  }
+  onObjectAdded(socket,data) {
+    let board = this.getBoard(socket)
+    if (board) {
+      board.onObjectAdded(socket,data)
+    }
+  }
+  onUndo(socket,data) {
+    let board = this.getBoard(socket)
+    if (board) {
+      board.onUndo(socket,data)
+    }
+  }
+  onRedo(socket,data) {
+    let board = this.getBoard(socket)
+    if (board) {
+      board.onRedo(socket,data)
+    }
+  }
 
-  socket.on('viewSync', function(data) {
-    console.log(data)
-    socket.broadcast.emit('viewSync', data)
-  });
+}
 
-  socket.on('drawing', function(data) {
-    console.log(data)
-    socket.broadcast.emit('drawing', data)
-  });
-  socket.on('object:added', function(data) {
+class sharedBoard {
+
+  constructor(boardid)  {
+    this.canvas = new fabric.StaticCanvas(); // for keeping track of the canvas
+    this.canvas_1 = new fabric.StaticCanvas(); // for creating new  objects that are received over sockets
+    this.canvas.includeDefaultValues = false
+    this.canvas_1.includeDefaultValues = false
+
+    this.history = []
+    this.redohistory = []
+    this.nextObjID = 0 // to assign unique ids to all generated objects
+    this.objectsByID = {}
+
+    this.boardid = boardid
+  }
+
+  getRoom() {
+    return io.in(this.boardid)
+  }
+
+  getNextID() {
+    this.nextObjID += 1
+    return this.nextObjID-1
+  }
+
+  onJoin(socket,data) {
+    socket.emit('canvasdata',this.canvas.toJSON(['id']))
+  }
+
+  onEraseBoard(socket,data) {
+    this.history.push(['eraseBoard',this.canvas.toJSON(['id'])])
+    this.redohistory = [] // clear redo history on new action
+
+    this.canvas.clear()
+    this.getRoom().emit('canvasdata',this.canvas.toJSON(['id']))
+  }
+
+  onViewSync(socket,data) {
+    socket.in(this.boardid).broadcast.emit('viewSync', data)
+  }
+
+  onObjectAdded(socket,data) {
     //console.log(JSON.stringify(data))
-    console.log(JSON.stringify(data).length)
+    //console.log(JSON.stringify(data).length) - measure uncompressed size
 
-    //  assign a unique object  id
-    data.id = canvas.nextObjID
-    canvas.nextObjID += 1
+    data.id = this.getNextID()
 
-    canvas_1.loadFromJSON({'objects':[data]})
-    canvas.add(canvas_1._objects[0])
-    socket.broadcast.emit('object:added', data)
+    this.canvas_1.loadFromJSON({'objects':[data]})
+    this.canvas.add(this.canvas_1._objects[0])
+    socket.in(this.boardid).broadcast.emit('object:added', data)
 
-    canvas.history.push(['object:added', data.id])
-    canvas.objectsByID[data.id] = canvas_1._objects[0]
-    canvas.redohistory = [] // clear redo history on new object
-  });
+    this.history.push(['object:added', data.id])
+    this.objectsByID[data.id] = this.canvas_1._objects[0]
+    this.redohistory = [] // clear redo history on new action
+  }
 
-  //hacky, better to do an id search and delete, but we don't...
-
-  socket.on('undo', function(data) {
-    act = canvas.history.pop()
+  onUndo(socket,data) {
+    let act = this.history.pop()
     if (act) {
       if (act[0]=='object:added') {
-        if (act[1] in canvas.objectsByID) {
-          canvas.remove(canvas.objectsByID[act[1]])
+        if (act[1] in this.objectsByID) {
+          this.canvas.remove(this.objectsByID[act[1]])
         }
       } else if (act[0]=='eraseBoard') {
-        canvas.loadFromJSON(act[1])
+        this.canvas.loadFromJSON(act[1])
         //reset  id
-        canvas.forEachObject((o)=>console.log(o.id))
-        canvas.forEachObject((o)=>canvas.objectsByID[o.id]=o)
+        this.canvas.forEachObject((o)=>console.log(o.id))
+        this.canvas.forEachObject((o)=>this.objectsByID[o.id]=o)
       }
 
-      canvas.redohistory.push(act)
-      io.sockets.emit('canvasdata',canvas.toJSON(['id']))
+      this.redohistory.push(act)
+      this.getRoom().emit('canvasdata',this.canvas.toJSON(['id'])) // could optimize by doing individual deletes on objects...  would need to sync client & serverside object ids
     }
-  })
+  }
 
-  socket.on('redo', function(data) {
-    act = canvas.redohistory.pop()
+  onRedo(socket, data) {
+    let act = this.redohistory.pop()
     if (act) {
       if (act[0]=='object:added') {
-        if (act[1] in canvas.objectsByID) {
-          canvas.add(canvas.objectsByID[act[1]])
+        if (act[1] in this.objectsByID) {
+          this.canvas.add(this.objectsByID[act[1]])
         }
       }
       if (act[0]=='eraseBoard') {
-        canvas.clear()
+        this.canvas.clear()
       }
-      canvas.history.push(act)
-      io.sockets.emit('canvasdata',canvas.toJSON())
+      this.history.push(act)
+      this.getRoom().emit('canvasdata',this.canvas.toJSON())
     }
-  })
+  }
+}
+
+app.use(express.static(__dirname + '/public'));
+
+app.get('/', function(req, res) {
+
+  req.query['boardid']= req.query['boardid'] ? req.query['boardid'] : uniqid()
+
+  //thispath = url.parse(req.url).pathname
+  res.redirect('/board.html' + '?' + querystring.encode(req.query))
+});
+
+
+
+bm  = new sharedBoardManager()
+
+function onConnection(socket) {
+  socket.on('joinBoard', (data)=>bm.onJoin(socket,data))
+
+  socket.on('eraseBoard',  (data)=>bm.onEraseBoard(socket,data))
+  socket.on('viewSync',  (data)=>bm.onViewSync(socket,data))
+  socket.on('object:added',  (data)=>bm.onObjectAdded(socket,data))
+  socket.on('undo',  (data)=>bm.onUndo(socket,data))
+  socket.on('redo',  (data)=>bm.onRedo(socket,data))
 }
 
 io.on('connection', onConnection);

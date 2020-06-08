@@ -382,6 +382,10 @@
 
     $('#eraseBoard').disabled = false // re-enable erase when new board received
   })
+
+  let urlParams = new URLSearchParams(window.location.search);
+  socket.emit('joinBoard', {'boardid':urlParams.get('boardid')})
+
 </script>
 
 

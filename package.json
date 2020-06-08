@@ -11,7 +11,8 @@
     "@arch-inc/fabricjs-psbrush": "0.0.15",
     "express": "~4.17.1",
     "fabricjs": "^1.0.0",
-    "socket.io": "~2.3.0"
+    "socket.io": "~2.3.0",
+    "uniqid": "^5.2.0"
   },
   "scripts": {
     "start": "node index"
