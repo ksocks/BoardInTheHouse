@@ -1,3 +1,19 @@
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>whiteboard</title>
+
+  <link rel="stylesheet" href="style.css">
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/3.6.2/fabric.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@arch-inc/fabricjs-psbrush@latest/dist/index.js"></script>
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+
+  <script src="/socket.io/socket.io.js"></script>
+
+</head>
+<body>
+
 <canvas id="main" width="720" height="480"></canvas>
 <br/>
 
@@ -26,13 +42,7 @@
 
 </div>
 
-<link rel="stylesheet" href="style.css">
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/3.6.2/fabric.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@arch-inc/fabricjs-psbrush@latest/dist/index.js"></script>
-<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
-
-<script src="/socket.io/socket.io.js"></script>
 <script>
   var socket = io();
   var event // for debugging
@@ -358,4 +368,5 @@
 </script>
 
 
-</script>
+</body>
+</html>
