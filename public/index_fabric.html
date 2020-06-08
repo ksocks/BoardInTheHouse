@@ -35,7 +35,9 @@
     <button id='eraseBoard' class='toolbar' onclick="javascript:eraseBoard()">🗑</button><br/>
     <button id='undo' class='toolbar' onclick="javascript:undo()">⟲</button>
     <button id='redo' class='toolbar' onclick="javascript:redo()">⟳</button><br/>
-    <button id='zoomToAll' class='toolbar' onclick="javascript:zoomToAll()">✣</button>
+    <button id='zoomToAll' class='toolbar' onclick="javascript:zoomToAll()">⤢</button>
+    <button id='sendViewSync' class='toolbar' onclick="javascript:sendViewSync()">⇨</button>
+
 
   </div>
 </div>
@@ -61,10 +63,12 @@
   defaultSize = 2;
   let brush = new fabric.PSBrush(canvas);
   brush.width = defaultSize;
+  brush.abs_width = defaultSize
   brush.color = defaultColor;
 
   let eraserBrush = new fabric.PencilBrush(canvas);
   eraserBrush.width = 20;
+  eraserBrush.abs_width = 20;
   eraserBrush.color = "#fee";
 
   canvas.freeDrawingBrush = brush;
@@ -115,7 +119,8 @@
     unsetErase()
 
     w = this.value
-    brush.width = w
+    brush.abs_width = w
+    brush.width = w/canvas.getZoom()
 
     $('#widths').children().removeClass('active')
     this.classList.add('active')
@@ -214,14 +219,23 @@
   // function sync zoom
   function resetView(){
     canvas.requestRenderAll()
+    brush.width = brush.abs_width/canvas.getZoom()
+    console.log(brush.width)
+    eraserBrush.width  = eraserBrush.abs_width/canvas.getZoom()
+
     //canvas.forEachObject((o)=> o.setCoords())
   }
   function sendViewSync() {
-    console.log(canvas.viewportTransform)
-    socket.emit('viewSync',canvas.viewportTransform)
+    socket.emit('viewSync',
+      {'viewportTransform':canvas.viewportTransform,'zoom':canvas.getZoom(),'width':canvas.width,'height':canvas.height}
+    )
   }
+
   function receiveViewSync(data) {
-    canvas.viewportTransform = data
+    canvas.viewportTransform = data.viewportTransform
+    let zoom = data.zoom * Math.min(canvas.width/data.width,  canvas.height/data.height)
+    canvas.setZoom(zoom)
+
     resetView()
   }
 
@@ -310,6 +324,7 @@
     if (zoom > 20) zoom = 20;
     if (zoom < 0.01) zoom = 0.01;
     canvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, zoom);
+    resetView()
     opt.e.preventDefault();
     opt.e.stopPropagation();
   });
