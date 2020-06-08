@@ -17,7 +17,6 @@
 <div style="background:white">
 <canvas id="main" width="720" height="480"></canvas>
 </div>
-
 <br/>
 
 <!--
@@ -82,7 +81,7 @@
     $('#colors').children().removeClass('active')
     this.classList.add('active')
   }
-  for (c of ['#000','#fff','#f00','#0f0','#00f']) {
+  for (c of ['#000',"#C0392B","#9B59B6","#2980B9","#1ABC9C","#27AE60","#F1C40F"]) {
     button = document.createElement("button")
     button.onclick = setBrushColor
     button.style.background = c
