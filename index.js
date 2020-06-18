@@ -10,7 +10,36 @@ const port = process.env.PORT || 3000;
 const uniqid=require('uniqid')
 const querystring=require('querystring')
 
+require('dotenv').config()
 
+
+const cloudinary = require("cloudinary");
+
+app.use(express.json());
+
+
+/*cloudinary.config({
+  cloud_name: process.env.CLOUD_NAME,
+  api_key: process.env.API_KEY,
+  api_secret: process.env.API_SECRET
+});*/
+
+// image upload API
+app.post("/image-upload", (request, response) => {
+
+    var image = request.body.image
+    //image =  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAFCAYAAACNbyblAAAAHElEQVQI12P4//8/w38GIAXDIBKE0DHxgljNBAAO9TXL0Y4OHwAAAABJRU5ErkJggg=="
+
+    // upload image here
+    //console.log(request.body.image)
+    cloudinary.v2.uploader.upload(image)
+    .then((result) => {
+      response.json({'url':result.secure_url})
+    }).catch((error) => {
+      console.log(error)
+      response.json({'url':''})
+    });
+});
 
 class sharedBoardManager {
   constructor() {
@@ -80,6 +109,7 @@ class sharedBoard {
 
   constructor(boardid)  {
     this.canvas = new fabric.StaticCanvas(); // for keeping track of the canvas
+
     this.canvas_1 = new fabric.StaticCanvas(); // for creating new  objects that are received over sockets
     this.canvas.includeDefaultValues = false
     this.canvas_1.includeDefaultValues = false
@@ -90,6 +120,8 @@ class sharedBoard {
     this.objectsByID = {}
 
     this.boardid = boardid
+
+    this.lastViewSyncData = null
   }
 
   getRoom() {
@@ -103,6 +135,7 @@ class sharedBoard {
 
   onJoin(socket,data) {
     socket.emit('canvasdata',this.canvas.toJSON(['id']))
+    socket.emit('viewSync', this.lastViewSyncData)
   }
 
   onEraseBoard(socket,data) {
@@ -114,6 +147,7 @@ class sharedBoard {
   }
 
   onViewSync(socket,data) {
+    this.lastViewSyncData = data
     socket.in(this.boardid).broadcast.emit('viewSync', data)
   }
 
@@ -123,12 +157,26 @@ class sharedBoard {
 
     data.id = this.getNextID()
 
+    var that = this
+    fabric.util.enlivenObjects([data], function(objects) {
+      //var origRenderOnAddRemove = canvas.renderOnAddRemove;
+      //canvas.renderOnAddRemove = false;
+      objects.forEach(function(o) {
+        that.canvas.add(o);
+        that.objectsByID[o.id] = o
+        that.history.push(['object:added', data.id])
+      });
+      //canvas.renderOnAddRemove = origRenderOnAddRemove;
+      //canvas.renderAll();
+    });
+
+    /*
     this.canvas_1.loadFromJSON({'objects':[data]})
-    this.canvas.add(this.canvas_1._objects[0])
+    console.log([data])
+    this.canvas.add(this.canvas_1._objects[0])*/
+
     socket.in(this.boardid).broadcast.emit('object:added', data)
 
-    this.history.push(['object:added', data.id])
-    this.objectsByID[data.id] = this.canvas_1._objects[0]
     this.redohistory = [] // clear redo history on new action
   }
 

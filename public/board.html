@@ -8,7 +8,6 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/3.6.2/fabric.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@arch-inc/fabricjs-psbrush@latest/dist/index.js"></script>
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
-
   <script src="/socket.io/socket.io.js"></script>
 
 </head>
@@ -36,7 +35,13 @@
     <button id='undo' class='toolbar' onclick="javascript:undo()">⟲</button>
     <button id='redo' class='toolbar' onclick="javascript:redo()">⟳</button><br/>
     <button id='zoomToAll' class='toolbar' onclick="javascript:zoomToAll()">⤢</button>
-    <button id='sendViewSync' class='toolbar' onclick="javascript:sendViewSync()">⇨</button>
+    <button id='zoomIn' class='toolbar' onclick="javascript:multiplyZoom(1.5)">+</button>
+    <button id='zoomOut' class='toolbar' onclick="javascript:multiplyZoom(0.75)">-</button>
+    <button id='tracking' class='toolbar' onclick="javascript:setTrackingMode()">👁</button>  ️
+    <!--<button id='sendViewSync' class='toolbar' onclick="javascript:sendViewSync()">⇨</button><br/>-->
+    <button id='teacher' class='toolbar' onclick="javascript:setTeacherMode()">🎓</button>
+
+
 
 
   </div>
@@ -51,12 +56,16 @@
   var socket = io();
   var event // for debugging
 
+
   // Create a Fabric.js canvas
   let canvas = new fabric.Canvas(document.getElementById("main"), {
     isDrawingMode: true,
-    enablePointerEvents: true
+    enablePointerEvents: true,
+    fireRightClick: true,
+    stopContextMenu: true
   });
   canvas.includeDefaultValues = false
+
 
   // Initialize a brush
   defaultColor = "#000"
@@ -72,6 +81,9 @@
   eraserBrush.color = "#fee";
 
   canvas.freeDrawingBrush = brush;
+
+  let viewObj = null
+
 
 
   function setBrushColor(event) {
@@ -95,6 +107,38 @@
       button.className = "toolbar"
     }
     $('#colors').append(button)
+  }
+
+  // tracking mode
+  trackingMode = false
+  function setTrackingMode(mode){
+    if (mode === undefined) {
+      mode = !trackingMode
+    }
+    if (mode) {
+      trackingMode = true
+      $('#tracking')[0].style.background = 'green'
+    } else {
+      trackingMode = false
+      $('#tracking')[0].style.background = 'white'
+    }
+  }
+  setTrackingMode(true)
+
+  // teacher mode
+  teacherMode = false
+  function setTeacherMode(){
+    pw = prompt('teacher password') //low tech authentication. If you're my student and a script kiddy, please don't use this to take control of my whiteboard, kthx.
+    if (!teacherMode) {
+      if (pw=='teaching!') {
+        teacherMode = true
+        $('#teacher')[0].style.background = 'green'
+        sendViewSync()
+      }
+    } else {
+      $('#teacher')[0].style.background = 'white'
+      teacherMode = false
+    }
   }
 
   //erase button:
@@ -172,6 +216,9 @@
     var firsto =  true
     var maxX = 0, minX=0, maxY=0, minY=0
     canvas.forEachObject((o) => {
+      if (o.nobounding) {
+        //skip this object in bounding box calculation
+      } else {
        cords = o.aCoords
        omaxX = Math.max(cords.tl.x, cords.tr.x, cords.bl.x, cords.br.x)
        ominX = Math.min(cords.tl.x, cords.tr.x, cords.bl.x, cords.br.x)
@@ -194,47 +241,85 @@
           maxY=omaxY
           firsto=false
         }
-      })
-
-      if (maxX-minX > 0 || maxX -  minY > 0)  {
-        zoom = Math.max((maxX-minX)/canvas.width, (maxY-minY)/canvas.height)
-      } else {
-        zoom = 1
       }
+    })
 
-    console.log([minX, maxX, minY, maxY])
-    console.log(zoom)
+    if (maxX-minX > 0 || maxX -  minY > 0)  {
+      zoom = Math.max((maxX-minX)/canvas.width, (maxY-minY)/canvas.height)
+    } else {
+      zoom = 1
+    }
 
-    //canvas.zoomToPoint({'x':(maxX+minX)/2,'y':(maxY+minY)/2}, 1/zoom)
     canvas.setZoom(1)
     canvas.viewportTransform[4] = -(minX - 0.05*(maxX-minX))
     canvas.viewportTransform[5] = -(minY - 0.05*(maxY-minY))
-    console.log(canvas.viewportTransform)
     canvas.setZoom(1/(zoom*1.1))
-    console.log(canvas.viewportTransform)
 
+    sendViewSync()
     resetView()
+
   }
 
   // function sync zoom
   function resetView(){
     canvas.requestRenderAll()
     brush.width = brush.abs_width/canvas.getZoom()
-    console.log(brush.width)
     eraserBrush.width  = eraserBrush.abs_width/canvas.getZoom()
 
     //canvas.forEachObject((o)=> o.setCoords())
   }
   function sendViewSync() {
-    socket.emit('viewSync',
-      {'viewportTransform':canvas.viewportTransform,'zoom':canvas.getZoom(),'width':canvas.width,'height':canvas.height}
-    )
+    if (teacherMode) {
+      data = {'viewportTransform':canvas.viewportTransform,'zoom':canvas.getZoom(),'width':canvas.width,'height':canvas.height}
+      socket.emit('viewSync', data)
+      redrawTeacherView(data)
+    }
   }
 
+  function redrawTeacherView(data) {
+    if (data) {
+
+      //canvas.setBackgroundColor("#f3f3ff")
+      // adjust the viewObj
+      if (viewObj) {
+        canvas.remove(viewObj)
+      }
+      console.log(data.viewportTransform[4])
+
+      viewObj = new fabric.Rect({
+        left: -data.viewportTransform[4]/data.zoom,
+        top: -data.viewportTransform[5]/data.zoom,
+        fill: 'white',
+        width: data.width/data.zoom,
+        height: data.height/data.zoom,
+        angle: 0
+      });
+      viewObj.nobroadcast = true
+      viewObj.nobounding = true // don't include in bounding box calculations
+
+      canvas.add(viewObj)
+      canvas.sendToBack(viewObj)
+    }
+
+    canvas.requestRenderAll()
+  }
+
+  function trackView(data) {
+    if (trackingMode) {
+      if (data) {
+        canvas.viewportTransform = data.viewportTransform
+        let zoom = data.zoom * Math.min(canvas.width/data.width,  canvas.height/data.height)
+        canvas.setZoom(zoom)
+      }
+    }
+  }
+
+  lastViewSyncData = null
   function receiveViewSync(data) {
-    canvas.viewportTransform = data.viewportTransform
-    let zoom = data.zoom * Math.min(canvas.width/data.width,  canvas.height/data.height)
-    canvas.setZoom(zoom)
+
+    trackView(data)
+    lastViewSyncData = data
+    redrawTeacherView(data)
 
     resetView()
   }
@@ -251,6 +336,9 @@
     canvas.setWidth(window.innerWidth)
     canvas.setHeight(window.innerHeight)
     canvas.requestRenderAll()
+    sendViewSync()
+    trackView(lastViewSyncData)
+    // if tracking
   }
   resizeToWindow()
   $(window).resize(resizeToWindow)
@@ -281,7 +369,7 @@
 
   canvas.on('mouse:down:before', function(opt) {
     var evt = opt.e;
-    if (evt.altKey === true) {
+    if (evt.altKey === true || evt.button==2) {
       this.isDragging = true;
       this.selection = false;
       this.lastPosX = evt.clientX;
@@ -290,6 +378,7 @@
       this.isDrawingMode = false
       canvas.discardActiveObject();
     }
+
   });
   canvas.on('mouse:down',function(opt) {
     if (this.isDragging) {
@@ -313,21 +402,105 @@
       this.isDragging = false;
       this.isDrawingMode = this.wasDrawingMode
       resetView()
+      sendViewSync()
     }
+
   });
 
-  canvas.on('mouse:wheel', function(opt) {
-    var delta = opt.e.deltaY;
-    var pointer = canvas.getPointer(opt.e);
+  pasteImage = function (e) {
+          var items=e.originalEvent.clipboardData.items;
+
+          e.preventDefault();
+          e.stopPropagation();
+
+          //Loop through files
+          for(var i=0;i<items.length;i++){
+            if (items[i].type.indexOf('image')== -1) continue;
+            var file = items[i],
+                type = items[i].type;
+            var imageData = file.getAsFile();
+            var fileReader = new FileReader();
+            fileReader.onloadend = function() {
+              fetch('image-upload', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    image: fileReader.result
+                  })
+                }).then(response => {
+                response.json().then((data)=>{
+                  if (data.url) {
+                    fabric.Image.fromURL(data.url,
+                      function(img){
+                        img.left = canvas.width/2 - canvas.viewportTransform[4]
+                        img.top = canvas.height/2 - canvas.viewportTransform[5]
+                        canvas.add(img);
+                    })
+                  }
+                })
+              })
+            }
+            fileReader.readAsDataURL(imageData);
+
+
+
+
+
+            /*fabric.Image.fromURL(img.src,
+              function(img){
+                img.left = canvas.width/2 - canvas.viewportTransform[4]
+                img.top = canvas.height/2 - canvas.viewportTransform[5]
+                canvas.add(img);
+            });*/
+          }
+        }
+  $(window).on('paste', pasteImage);
+
+
+  function multiplyZoom(factor) {
     var zoom = canvas.getZoom();
-    zoom = zoom + delta/200;
+
+    zoom = zoom * factor;
     if (zoom > 20) zoom = 20;
     if (zoom < 0.01) zoom = 0.01;
-    canvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, zoom);
+
+    canvas.zoomToPoint({x: canvas.width/2, y: canvas.height/2}, zoom);
+
     resetView()
+    sendViewSync()
+  }
+
+  var lastWheelTime = 0
+  var delta = 0
+  canvas.on('mouse:wheel', function(opt) {
+    /*
+    delta += opt.e.deltaY
+
+    now = (new Date()).getTime()
+    if (now - lastWheelTime > 1000) {
+      lastWheelTime=now
+    } else if (now - lastWheelTime > 200) {
+      var pointer = canvas.getPointer(opt.e);
+      var zoom = canvas.getZoom();
+
+      zoom = zoom * (1+delta/100);
+      if (zoom > 20) zoom = 20;
+      if (zoom < 0.01) zoom = 0.01;
+      canvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, zoom);
+
+      lastWheelTime = now
+      delta = 0
+
+      resetView()
+      sendViewSync()
+    }*/
+
     opt.e.preventDefault();
     opt.e.stopPropagation();
   });
+
 
   canvas.on('text:changed',  function(e) {
     console.log('text:changed')
@@ -369,16 +542,34 @@
     console.log(e)
     e['nobroadcast']=true
     e.selectable=false
-    canvas_1.loadFromJSON({'objects':[e]})
-    canvas.add(canvas_1._objects[0])
+
+
+    //canvas_1.loadFromJSON({'objects':[e]})
+    //canvas.add(canvas_1._objects[0])
+
+    fabric.util.enlivenObjects([e], function(objects) {
+      //var origRenderOnAddRemove = canvas.renderOnAddRemove;
+      //canvas.renderOnAddRemove = false;
+      objects.forEach(function(o) {
+        canvas.add(o);
+      });
+      //canvas.renderOnAddRemove = origRenderOnAddRemove;
+      //canvas.renderAll();
+    });
+
   })
 
   socket.on('canvasdata', function(e) {
+
     console.log('received:')
     e.objects.forEach(item=>item['nobroadcast']=true)
     e.objects.forEach(item=>item.selectable=false)
     console.log(e)
     canvas.loadFromJSON(e)
+
+    canvas.setBackgroundColor(new fabric.Pattern({source: 'images/checkerboard.png'},canvas.requestRenderAll.bind(canvas)))
+
+
 
     $('#eraseBoard').disabled = false // re-enable erase when new board received
   })

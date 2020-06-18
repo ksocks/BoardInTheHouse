@@ -1,0 +1,62 @@
+<html>
+<head>
+    <link rel="stylesheet" href="../../node_modules/bootstrap/dist/css/bootstrap.css">
+
+    <!-- Custom CSS -->
+    <link href="css/logo-nav.css" rel="stylesheet">
+    <script src="../../dist/cloudinary-core-shrinkwrap.js"></script>
+    <script src="../../dist/cloudinary-core-shrinkwrap.min.js"></script>
+    <title>Responsive Test</title>
+</head>
+
+<body>
+
+<div class="container">
+    <h1>Bootstrap &amp; Cloudinary Responsive Images</h1>
+    <hr>
+    <div class="row">
+        <div>
+
+            <!-- Nav tabs -->
+            <ul class="nav nav-tabs" role="tablist">
+                <li role="presentation" class="active"><a href="#home" aria-controls="home" role="tab"
+                                                          data-toggle="tab">Home</a></li>
+                <li role="presentation"><a href="#profile" aria-controls="profile" role="tab" data-toggle="tab">
+                    <img id="image1" data-src="http://res.cloudinary.com/demo/image/upload/c_scale,w_auto/smiling_man.jpg"
+                         class="cld-responsive"></a></li>
+                <li role="presentation"><a href="#messages" aria-controls="messages" role="tab" data-toggle="tab">
+                    <img id="image2" data-src="http://res.cloudinary.com/demo/image/upload/w_auto/sample.jpg"
+                         class="cld-responsive">
+                </a></li>
+                <li role="presentation"><a href="#settings" aria-controls="settings" role="tab" data-toggle="tab">Settings</a>
+                </li>
+            </ul>
+
+            <!-- Tab panes -->
+            <div class="tab-content">
+                <div role="tabpanel" class="tab-pane active" id="home">
+                    <a href="#"><img id="tabImage2" data-src="http://demo-res.cloudinary.com/image/upload/c_scale,w_auto:breakpoints/sample.jpg"
+                                                                            class="cld-responsive">
+                </a>
+                    <img id="tabImage3" data-src="http://res.cloudinary.com/demo/image/upload/c_scale,e_sepia,w_auto/sample.jpg"
+                                                                            class="cld-responsive">
+                </div>
+                <div role="tabpanel" class="tab-pane" id="profile">...</div>
+                <div role="tabpanel" class="tab-pane" id="messages">...</div>
+                <div role="tabpanel" class="tab-pane" id="settings">...</div>
+            </div>
+
+        </div>
+    </div>
+
+
+    <script type="text/javascript">
+        window.onload = function(){
+            var cl = cloudinary.Cloudinary.new( {cloud_name: "demo"});
+            cl.responsive();
+            var event = new Event('karma-ready');
+            window.dispatchEvent(event);
+        };
+    </script>
+</div>
+</body>
