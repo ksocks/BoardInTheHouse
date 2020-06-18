@@ -273,6 +273,7 @@
       data = {'viewportTransform':canvas.viewportTransform,'zoom':canvas.getZoom(),'width':canvas.width,'height':canvas.height}
       socket.emit('viewSync', data)
       redrawTeacherView(data)
+      lastViewSyncData=data
     }
   }
 
@@ -569,6 +570,9 @@
 
     canvas.setBackgroundColor(new fabric.Pattern({source: 'images/checkerboard.png'},canvas.requestRenderAll.bind(canvas)))
 
+    if (lastViewSyncData) {
+      receiveViewSync(lastViewSyncData)
+    }
 
 
     $('#eraseBoard').disabled = false // re-enable erase when new board received
