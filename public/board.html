@@ -15,6 +15,11 @@
 
 <div style="background:white">
 <canvas id="main" width="720" height="480"></canvas>
+
+<div id='uploading' style="position:absolute;left:45%;top:35%;visibility:hidden">
+  <p class='overlaymessage'>UPLOADING...</p>
+</div>
+
 </div>
 <br/>
 
@@ -31,6 +36,7 @@
     <button class='toolbar' id='erase' onclick='javascript:setErase()'>✗</button>
   </div><br/>
   <div id='tools'>
+    <button id='selectMode' class='toolbar' onclick="javascript:setSelectMode()">👇</button></br>
     <button id='eraseBoard' class='toolbar' onclick="javascript:eraseBoard()">🗑</button><br/>
     <button id='undo' class='toolbar' onclick="javascript:undo()">⟲</button>
     <button id='redo' class='toolbar' onclick="javascript:redo()">⟳</button><br/>
@@ -39,11 +45,8 @@
     <button id='zoomOut' class='toolbar' onclick="javascript:multiplyZoom(0.75)">-</button>
     <button id='tracking' class='toolbar' onclick="javascript:setTrackingMode()">👁</button>  ️
     <!--<button id='sendViewSync' class='toolbar' onclick="javascript:sendViewSync()">⇨</button><br/>-->
-    <button id='teacher' class='toolbar' onclick="javascript:setTeacherMode()">🎓</button>
-
-
-
-
+    <button id='teacher' class='toolbar' onclick="javascript:setTeacherMode()">🎓</button><br/>
+    <button id='saveboard' class='toolbar' onclick="javascript:saveBoard()">💾</button>
   </div>
 </div>
 
@@ -55,6 +58,8 @@
 <script>
   var socket = io();
   var event // for debugging
+  var objectsByID = {}
+
 
 
   // Create a Fabric.js canvas
@@ -65,6 +70,7 @@
     stopContextMenu: true
   });
   canvas.includeDefaultValues = false
+  canvas.targetFindTolerance = 10
 
 
   // Initialize a brush
@@ -88,10 +94,12 @@
 
   function setBrushColor(event) {
     unsetErase()
+    setSelectMode(false)
+
 
     c = event.target.style.background
     brush.color = c
-    canvas.isErasing = false
+    canvas.isEraseMode = false
     canvas.freeDrawingBrush = brush;
 
     $('#colors').children().removeClass('active')
@@ -108,6 +116,25 @@
     }
     $('#colors').append(button)
   }
+
+
+  // select mode
+  function setSelectMode(mode){
+    dmode = !mode
+    if (mode === undefined) {
+      dmode = !canvas.isDrawingMode
+    }
+    if (dmode) {
+      canvas.isDrawingMode = true
+      canvas.discardActiveObject()
+      $('#selectMode')[0].style.background = 'white'
+    } else {
+      unsetErase()
+      canvas.isDrawingMode = false
+      $('#selectMode')[0].style.background = 'green'
+    }
+  }
+  setSelectMode(false)
 
   // tracking mode
   trackingMode = false
@@ -141,19 +168,27 @@
     }
   }
 
+  //
+  function saveBoard() {
+    socket.emit('saveBoard')
+  }
+
   //erase button:
 
   function setErase(event) {
-    if (canvas.isErasing) {
+    if (canvas.isEraseMode) {
       unsetErase()
+
     } else {
-      canvas.isErasing = true
+      setSelectMode(false)
+      canvas.isEraseMode = true
       canvas.freeDrawingBrush = eraserBrush;
       $('#erase').addClass('active')
+
     }
   }
   function unsetErase() {
-    canvas.isErasing = false
+    canvas.isEraseMode = false
     canvas.freeDrawingBrush = brush;
     $('#erase').removeClass('active')
   }
@@ -161,6 +196,7 @@
 
   function setBrushWidth(event) {
     unsetErase()
+    setSelectMode(false)
 
     w = this.value
     brush.abs_width = w
@@ -266,7 +302,7 @@
     brush.width = brush.abs_width/canvas.getZoom()
     eraserBrush.width  = eraserBrush.abs_width/canvas.getZoom()
 
-    //canvas.forEachObject((o)=> o.setCoords())
+    canvas.forEachObject((o)=> o.setCoords())
   }
   function sendViewSync() {
     if (teacherMode) {
@@ -317,7 +353,6 @@
 
   lastViewSyncData = null
   function receiveViewSync(data) {
-
     trackView(data)
     lastViewSyncData = data
     redrawTeacherView(data)
@@ -385,7 +420,13 @@
     if (this.isDragging) {
       canvas.discardActiveObject();
     }
+    if (this.isEraseMode) {
+      this.isErasing = true
+      eraseObjs = []
+      lastEraseObj = null
+    }
   });
+
   canvas.on('mouse:move', function(opt) {
     var e = opt.e;
     if (this.isDragging) {
@@ -395,15 +436,39 @@
       this.lastPosX = e.clientX;
       this.lastPosY = e.clientY;
     }
+    if (this.isErasing) {
+      if (opt.target != null && opt.target != lastEraseObj) {
+        console.log(opt.target)
+        eraseObjs.push(opt.target)
+        lastEraseObj = opt.target
+      }
+    }
   });
   canvas.on('mouse:up', function(opt) {
     this.selection = true;
+
 
     if (this.isDragging) {
       this.isDragging = false;
       this.isDrawingMode = this.wasDrawingMode
       resetView()
       sendViewSync()
+    }
+
+    if (this.isErasing) {
+      this.isErasing = false
+
+      if (eraseObjs.length>0) {
+        eraseObjIDs = []
+        eraseObjs.forEach(function(o) {
+          canvas.remove(o)
+          eraseObjIDs.push(o.id)
+        })
+        socket.emit('objectsErased',eraseObjIDs)
+      }
+
+      eraseObjs = []
+      lastEraseObj = null
     }
 
   });
@@ -422,6 +487,7 @@
             var imageData = file.getAsFile();
             var fileReader = new FileReader();
             fileReader.onloadend = function() {
+              $('#uploading')[0].style.visibility='visible'
               fetch('image-upload', {
                 method: 'POST',
                 headers: {
@@ -435,9 +501,28 @@
                   if (data.url) {
                     fabric.Image.fromURL(data.url,
                       function(img){
-                        img.left = canvas.width/2 - canvas.viewportTransform[4]
-                        img.top = canvas.height/2 - canvas.viewportTransform[5]
+
+                        img.originX = 'center'
+                        img.originY = 'center'
+                        img.left = (canvas.width/2 - canvas.viewportTransform[4])/canvas.getZoom()
+                        img.top = (canvas.height/2 - canvas.viewportTransform[5])/canvas.getZoom()
+                        if (img.width >= img.height) {
+                          let rat  = img.height/img.width
+                          img.scaleToWidth(300/canvas.getZoom())
+                          //img.width = 300/canvas.getZoom()
+                          //img.height = 300/canvas.getZoom()*rat
+                        } else {
+                          let rat  = img.height/img.width
+                          img.scaleToHeight(300/canvas.getZoom())
+                          //img.width = 300/canvas.getZoom()/rat
+                          //img.height = 300/canvas.getZoom()
+                        }
                         canvas.add(img);
+                        img.setCoords()
+                        canvas.isDrawingMode = false
+                        canvas.setActiveObject(img)
+
+                        $('#uploading')[0].style.visibility='hidden'
                     })
                   }
                 })
@@ -509,50 +594,125 @@
   })
 
   canvas.on('object:modified',  function(e) {
-    console.log('object:modified')
+
+
+    canvas.discardActiveObject() // discard selection to update individual object coordinatess
+
+    if (e.target.type == 'activeSelection') { // a group
+      objs = e.target.getObjects()
+    } else { // an individual object
+      objs = [e.target]
+    }
+
+    let objsJSON = []
+    objs.forEach(function(o) {
+      oJSON = {}
+      for (key of ['id', 'left', 'top','height','width','scaleX','scaleY','skewX','skewY','angle']) {
+        oJSON[key]=o[key]
+      }
+      objsJSON.push(oJSON)
+    })
+
+    //reactivate selection
+    var sel = new fabric.ActiveSelection(objs, {
+            canvas: canvas,
+          });
+    canvas.setActiveObject(sel);
+
+    socket.emit('objectsModified',objsJSON)
+
+  })
+
+  socket.on('objectsModified',function(e) {
+    console.log('objectsModified')
+    console.log(e)
+
+    // deselect to avoid conflicts
+    canvas.discardActiveObject() // discard selection to update individual object coordinatess
+
+    for (o of e) {
+      if (o.id in objectsByID) {
+        let oTarget = objectsByID[o.id]
+        for (key in o) {
+          oTarget[key]=o[key]
+        }
+        oTarget.bringToFront()
+        oTarget.setCoords()
+      }
+    }
+    canvas.requestRenderAll()
+    console.log('objectsModified')
     console.log(e)
   })
 
 
   canvas.on('object:added', function(e) {
 
-
-    e.target.selectable = false
+    //e.target.selectable = false
     if ('nobroadcast' in e.target) {
       return
     } else {
-      if (this.isErasing) {
-        e.target.globalCompositeOperation = 'destination-out';
+      o = e.target
+      oJSON = e.target.toJSON()
+
+      if (this.isEraseMode) {
+        o.globalCompositeOperation = 'destination-out'
+        oJSON.globalCompositeOperation = o.globalCompositeOperation;
+        canvas.remove(o)
+      } else {
+        o.id = getNextObjID()
+        oJSON.id = o.id
+        objectsByID[o.id]=o
+
+        if (o.type=='PSStroke') {
+          o.perPixelTargetFind = true
+          //o.selectable = false
+        }
+        //oJSON.perPixelTargetFind = true
+
+        socket.emit('objectsAdded',[oJSON])
       }
-      console.log('object:added')
-      console.log(e.target)
-      socket.emit('object:added',e.target)
+
     }
 
   })
 
   canvas.on('path:created', function(e) {
-    if (this.isErasing) {
+    if (this.isEraseMode) {
       e.path.globalCompositeOperation = 'destination-out';
     }
   })
 
+  clientID = null
+  socket.on('clientID', function(e) {
+    clientID = e
+    console.log('clientID ' + e)
+  })
+  nextObjID = 0
+  function getNextObjID()  {
+    nextObjID += 1
+    console.log(clientID + '-' + nextObjID)
+    return clientID + '-' + nextObjID
+  }
 
-  socket.on('object:added', function(e) {
-    console.log('object:added received:')
+
+  socket.on('objectsAdded', function(e) {
+    console.log('objectsAdded received:')
     console.log(e)
-    e['nobroadcast']=true
-    e.selectable=false
+
+    e.map(o=>o.nobroadcast=true) // prevent from rebroadcasting objects
+    //e.selectable=false
 
 
     //canvas_1.loadFromJSON({'objects':[e]})
     //canvas.add(canvas_1._objects[0])
 
-    fabric.util.enlivenObjects([e], function(objects) {
+    fabric.util.enlivenObjects(e, function(objects) {
       //var origRenderOnAddRemove = canvas.renderOnAddRemove;
       //canvas.renderOnAddRemove = false;
       objects.forEach(function(o) {
         canvas.add(o);
+        objectsByID[o.id]=o
       });
       //canvas.renderOnAddRemove = origRenderOnAddRemove;
       //canvas.renderAll();
@@ -560,13 +720,39 @@
 
   })
 
+  socket.on('object:modified', function(e) {
+    console.log('object:modified')
+    console.log(e.target)
+  }
+  )
+
+  socket.on('objectsErased', function(e) {
+    e.forEach(function(oid) {
+      console.log(oid)
+      console.log(objectsByID)
+      if (oid in objectsByID) {
+        canvas.remove(objectsByID[oid])
+        delete objectsByID[oid]
+      }
+    })
+    canvas.requestRenderAll()
+  })
+
   socket.on('canvasdata', function(e) {
 
     console.log('received:')
     e.objects.forEach(item=>item['nobroadcast']=true)
-    e.objects.forEach(item=>item.selectable=false)
+    //e.objects.forEach(item=>item.selectable=false)
     console.log(e)
-    canvas.loadFromJSON(e)
+    console.log('loading')
+    canvas.loadFromJSON(e, function() {
+      canvas.getObjects().forEach(o=>{
+        objectsByID[o.id]=o
+      })
+      canvas.requestRenderAll()
+      console.log('loaded')
+    })
+
 
     canvas.setBackgroundColor(new fabric.Pattern({source: 'images/checkerboard.png'},canvas.requestRenderAll.bind(canvas)))
 
@@ -574,6 +760,7 @@
       receiveViewSync(lastViewSyncData)
     }
 
+    resetView()
 
     $('#eraseBoard').disabled = false // re-enable erase when new board received
   })

@@ -1,0 +1,32 @@
+<html lang="en">
+  <head>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="https://cdn.rawgit.com/tsayen/dom-to-image/bfc00a6c5bba731027820199acd7b0a6e92149d8/dist/dom-to-image.min.js"></script>
+  </head>
+  <body>
+    <div id='foo'>
+      iframe:
+      <iframe id='content' width=200 height=200 src='http://www.xkcd.com'></iframe>
+      after iframe
+    </div>
+    <script type="text/javascript">
+      const render = node =>
+        domtoimage.toSvg(node)
+        .then(dataUrl => {
+        console.log(performance.now()-pf)
+          const img = new Image();
+          img.src = dataUrl;
+          $('body').append(img);
+        })
+        .catch(error =>
+          console.error('oops, something went wrong!', error)
+        );
+
+      foo=$('#content')[0].contentWindow.document.getElementsByTagName("body")[0]
+
+      var pf=performance.now();
+      render(foo);
+    </script>
+
+  </body>
+</html>
