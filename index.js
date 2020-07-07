@@ -15,6 +15,13 @@ const boardspath = "data/boards/"
 
 require('dotenv').config()
 
+/* configure s3 */
+process.env.AWS_ACCESS_KEY_ID     = process.env.BUCKETEER_AWS_ACCESS_KEY_ID;
+process.env.AWS_SECRET_ACCESS_KEY = process.env.BUCKETEER_AWS_SECRET_ACCESS_KEY;
+process.env.AWS_REGION            = 'us-east-1';
+var AWS = require('aws-sdk');
+var s3  = new AWS.S3();
+
 
 const cloudinary = require("cloudinary");
 
@@ -65,16 +72,19 @@ class sharedBoardManager {
 
     if (!(data.boardid in this.boards)) { //  try to load board
       this.boards[data.boardid] = new sharedBoard(data.boardid) // create new board object
-      if (fs.existsSync(boardspath+data.boardid+'.brd')) { // load it if it was in a file
-        this.boards[data.boardid].loadBoard(boardspath+data.boardid+".brd")
-      }
+      let that = this
+      this.boards[data.boardid].loadBoard(boardspath+data.boardid+".brd", function () {
+        that.users[socket.id]=data.boardid
+        let board = that.getBoard(socket)
+        socket.join(data.boardid)
+        board.onJoin(socket)
+      })
+    } else {
+      this.users[socket.id]=data.boardid
+      let board = this.getBoard(socket)
+      socket.join(data.boardid)
+      board.onJoin(socket)
     }
-
-    this.users[socket.id]=data.boardid
-
-    let board = this.getBoard(socket)
-    socket.join(data.boardid)
-    board.onJoin(socket)
 
   }
 
@@ -148,7 +158,9 @@ class sharedBoard {
     this.lastViewSyncData = null
   }
 
-  loadBoard(filename) {
+  loadBoard(filename, callback) {
+    /*
+    if (fs.existsSync(boardspath+data.boardid+'.brd')) { // load it if it was in a file
     try {
       var json = fs.readFileSync(filename,'utf8')
       //console.log(json)
@@ -156,17 +168,61 @@ class sharedBoard {
       this.canvas.loadFromDatalessJSON(json)
     } catch (err) {
       console.error(err)
+    } */
+
+    var params={
+     Key:    this.boardid+'.brd',
+     Bucket: process.env.BUCKETEER_BUCKET_NAME
     }
+
+    let that = this
+    s3.headObject(params, function (err, metadata) {
+      if (err && err.code === 'NotFound') {
+        console.log('board not found, creating new')
+        callback()
+      } else {
+        s3.getObject(params, function put(err, data) {
+          if (err) {
+            console.log('S3 board load failed')
+            console.log(err, err.stack);
+            callback()
+          } else {
+            that.canvas.loadFromDatalessJSON(data.Body.toString(), callback)
+          }
+        });
+      }
+    });
+
   }
-  saveBoard(filename) {
+
+  saveBoard() {
+    /*
     try {
       fs.writeFileSync(filename, JSON.stringify(this.canvas.toDatalessJSON(['id'])))
     } catch (err) {
       console.error(err)
-    }
+    }*/
+
+    s3.putObject(
+        {
+         Key:    this.boardid+'.brd',
+         Bucket: process.env.BUCKETEER_BUCKET_NAME,
+         Body:   JSON.stringify(this.canvas.toDatalessJSON(['id'])),
+         ContentType: 'application/json; charset=utf-8'
+        }, function put(err, data) {
+              if (err) {
+                console.log('S3 save failed')
+                console.log(err, err.stack);
+              } else {
+                console.log('S3 save successful!')
+                console.log(data);
+              }
+            }
+        )
   }
+
   onSave() {
-    this.saveBoard(boardspath+this.boardid+".brd")
+    this.saveBoard()
   }
   autosave() {
     this.onSave() // hacky autosave
