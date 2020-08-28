@@ -144,10 +144,6 @@ class sharedBoard {
   constructor(boardid)  {
     this.canvas = new fabric.StaticCanvas(); // for keeping track of the canvas
 
-    this.canvas_1 = new fabric.StaticCanvas(); // for creating new  objects that are received over sockets
-    this.canvas.includeDefaultValues = false
-    this.canvas_1.includeDefaultValues = false
-
     this.history = []
     this.redohistory = []
     this.nextClientID = 0 // to assign unique ids to all clientss for generating unique object ids

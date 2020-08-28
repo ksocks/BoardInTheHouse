@@ -11,6 +11,7 @@
     "@arch-inc/fabricjs-psbrush": "0.0.15",
     "aws-sdk": "^2.710.0",
     "body-parser": "^1.19.0",
+    "canvas": "^2.6.1",
     "cloudinary": "^1.22.0",
     "cloudinary-jquery-file-upload": "^2.8.2",
     "dom-to-image": "^2.6.0",

@@ -9,12 +9,22 @@
   <script src="https://cdn.jsdelivr.net/npm/@arch-inc/fabricjs-psbrush@latest/dist/index.js"></script>
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
   <script src="/socket.io/socket.io.js"></script>
+  <script>
+    let urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('readonly')=='true') {
+      var readonly = true
+    } else {
+      var readonly = false;
+    }
+    console.log(urlParams['readonly'])
+  </script>
+
 
 </head>
 <body style="background:white">
 
 <div style="background:white">
-<canvas id="main" width="720" height="480"></canvas>
+<canvas id="main" width="100" height="100" scrolling="no"></canvas>
 
 <div id='uploading' style="position:absolute;left:45%;top:35%;visibility:hidden">
   <p class='overlaymessage'>UPLOADING...</p>
@@ -30,221 +40,199 @@
 -->
 
 <div id='menu' style='position:absolute;left:5px;top:5px'>
-  <div id='colors'></div><br/>
-  <div id='widths'></div><br/>
-  <div id='eraser'>
-    <button class='toolbar' id='erase' onclick='javascript:setErase()'>✗</button>
-  </div><br/>
-  <div id='tools'>
-    <button id='selectMode' class='toolbar' onclick="javascript:setSelectMode()">👇</button></br>
-    <button id='eraseBoard' class='toolbar' onclick="javascript:eraseBoard()">🗑</button><br/>
-    <button id='undo' class='toolbar' onclick="javascript:undo()">⟲</button>
-    <button id='redo' class='toolbar' onclick="javascript:redo()">⟳</button><br/>
+  <script>
+  if (!readonly) {
+    document.write("\
+      <div id='colors'></div><br/> \
+      <div id='widths'></div><br/> \
+      <div id='eraser'> \
+        <button class='toolbar' id='erase' onclick='javascript:setErase()'>✗</button> \
+      </div><br/> \
+      <div id='tools'> \
+        <button id='tracking' class='toolbar' onclick='javascript:addText()'>📝</button></br> \
+        <button id='selectMode' class='toolbar' onclick='javascript:setSelectMode()'>👇</button></br> \
+        <button id='eraseBoard' class='toolbar' onclick='javascript:eraseBoard()'>🗑</button><br/> \
+        <button id='undo' class='toolbar' onclick='javascript:undo()'>⟲</button> \
+        <button id='redo' class='toolbar' onclick='javascript:redo()'>⟳</button><br/> \
+        <button id='teacher' class='toolbar' onclick='javascript:setTeacherMode()'>🎓</button><br/> \
+      </div>")
+  }
+  </script>
+
+  <div id='view'>
     <button id='zoomToAll' class='toolbar' onclick="javascript:zoomToAll()">⤢</button>
     <button id='zoomIn' class='toolbar' onclick="javascript:multiplyZoom(1.5)">+</button>
     <button id='zoomOut' class='toolbar' onclick="javascript:multiplyZoom(0.75)">-</button>
     <button id='tracking' class='toolbar' onclick="javascript:setTrackingMode()">👁</button>  ️
     <!--<button id='sendViewSync' class='toolbar' onclick="javascript:sendViewSync()">⇨</button><br/>-->
-    <button id='teacher' class='toolbar' onclick="javascript:setTeacherMode()">🎓</button><br/>
-    <button id='saveboard' class='toolbar' onclick="javascript:saveBoard()">💾</button>
   </div>
 </div>
 
 
-
-</div>
-
-
 <script>
+
+
+
   var socket = io();
   var event // for debugging
   var objectsByID = {}
 
 
-
   // Create a Fabric.js canvas
-  let canvas = new fabric.Canvas(document.getElementById("main"), {
-    isDrawingMode: true,
-    enablePointerEvents: true,
-    fireRightClick: true,
-    stopContextMenu: true
-  });
+  var canvas = null
+  if (!readonly) {
+    canvas = new fabric.Canvas(document.getElementById("main"), {
+      isDrawingMode: true,
+      enablePointerEvents: true,
+      fireRightClick: true,
+      stopContextMenu: true
+    });
+  } else {
+    canvas = new fabric.StaticCanvas(document.getElementById("main"))
+  }
+
   canvas.includeDefaultValues = false
   canvas.targetFindTolerance = 10
 
 
-  // Initialize a brush
-  defaultColor = "#000"
-  defaultSize = 2;
-  let brush = new fabric.PSBrush(canvas);
-  brush.width = defaultSize;
-  brush.abs_width = defaultSize
-  brush.color = defaultColor;
-
-  let eraserBrush = new fabric.PencilBrush(canvas);
-  eraserBrush.width = 20;
-  eraserBrush.abs_width = 20;
-  eraserBrush.color = "#fee";
-
-  canvas.freeDrawingBrush = brush;
-
   let viewObj = null
 
+  if (!readonly) {
+    // Initialize a brush
+    defaultColor = "#000"
+    defaultSize = 2;
+    var brush = new fabric.PSBrush(canvas);
+    brush.width = defaultSize;
+    brush.abs_width = defaultSize
+    brush.color = defaultColor;
 
+    var eraserBrush = new fabric.PencilBrush(canvas);
+    eraserBrush.width = 20;
+    eraserBrush.abs_width = 20;
+    eraserBrush.color = "#fee";
 
-  function setBrushColor(event) {
-    unsetErase()
-    setSelectMode(false)
-
-
-    c = event.target.style.background
-    brush.color = c
-    canvas.isEraseMode = false
     canvas.freeDrawingBrush = brush;
 
-    $('#colors').children().removeClass('active')
-    this.classList.add('active')
-  }
-  for (c of ['#000',"#C0392B","#9B59B6","#2980B9","#1ABC9C","#27AE60","#F1C40F"]) {
-    button = document.createElement("button")
-    button.onclick = setBrushColor
-    button.style.background = c
-    if (c==defaultColor) {
-      button.className = "toolbar active"
-    } else {
-      button.className = "toolbar"
-    }
-    $('#colors').append(button)
-  }
 
 
-  // select mode
-  function setSelectMode(mode){
-    dmode = !mode
-    if (mode === undefined) {
-      dmode = !canvas.isDrawingMode
-    }
-    if (dmode) {
-      canvas.isDrawingMode = true
-      canvas.discardActiveObject()
-      $('#selectMode')[0].style.background = 'white'
-    } else {
+
+    function setBrushColor(event) {
       unsetErase()
-      canvas.isDrawingMode = false
-      $('#selectMode')[0].style.background = 'green'
-    }
-  }
-  setSelectMode(false)
-
-  // tracking mode
-  trackingMode = false
-  function setTrackingMode(mode){
-    if (mode === undefined) {
-      mode = !trackingMode
-    }
-    if (mode) {
-      trackingMode = true
-      $('#tracking')[0].style.background = 'green'
-    } else {
-      trackingMode = false
-      $('#tracking')[0].style.background = 'white'
-    }
-  }
-  setTrackingMode(true)
-
-  // teacher mode
-  teacherMode = false
-  function setTeacherMode(){
-    pw = prompt('teacher password') //low tech authentication. If you're my student and a script kiddy, please don't use this to take control of my whiteboard, kthx.
-    if (!teacherMode) {
-      if (pw=='teaching!') {
-        teacherMode = true
-        $('#teacher')[0].style.background = 'green'
-        sendViewSync()
-      }
-    } else {
-      $('#teacher')[0].style.background = 'white'
-      teacherMode = false
-    }
-  }
-
-  //
-  function saveBoard() {
-    socket.emit('saveBoard')
-  }
-
-  //erase button:
-
-  function setErase(event) {
-    if (canvas.isEraseMode) {
-      unsetErase()
-
-    } else {
       setSelectMode(false)
-      canvas.isEraseMode = true
-      canvas.freeDrawingBrush = eraserBrush;
-      $('#erase').addClass('active')
 
+
+      c = event.target.style.background
+      brush.color = c
+      canvas.isEraseMode = false
+      canvas.freeDrawingBrush = brush;
+
+      $('#colors').children().removeClass('active')
+      this.classList.add('active')
     }
-  }
-  function unsetErase() {
-    canvas.isEraseMode = false
-    canvas.freeDrawingBrush = brush;
-    $('#erase').removeClass('active')
-  }
+    for (c of ['#000',"#C0392B","#9B59B6","#2980B9","#1ABC9C","#27AE60","#F1C40F"]) {
+      button = document.createElement("button")
+      button.onclick = setBrushColor
+      button.style.background = c
+      if (c==defaultColor) {
+        button.className = "toolbar active"
+      } else {
+        button.className = "toolbar"
+      }
+      $('#colors').append(button)
+    }
+
+    function addText() {
+      txt=new fabric.IText('...')
+      canvas.add(txt)
+      canvas.isDrawingMode = false
+      canvas.setActiveObject(txt)
+    }
 
 
-  function setBrushWidth(event) {
-    unsetErase()
+    // select mode
+    function setSelectMode(mode){
+      dmode = !mode
+      if (mode === undefined) {
+        dmode = !canvas.isDrawingMode
+      }
+      if (dmode) {
+        canvas.isDrawingMode = true
+        canvas.discardActiveObject()
+        $('#selectMode')[0].style.background = 'white'
+      } else {
+        unsetErase()
+        canvas.isDrawingMode = false
+        $('#selectMode')[0].style.background = 'green'
+      }
+    }
     setSelectMode(false)
 
-    w = this.value
-    brush.abs_width = w
-    brush.width = w/canvas.getZoom()
+    //erase button:
 
-    $('#widths').children().removeClass('active')
-    this.classList.add('active')
+    function setErase(event) {
+      if (canvas.isEraseMode) {
+        unsetErase()
 
-  }
-  for (w of [1,2,5,10,15]) {
-    circle = document.createElement("div")
-    circle.style.width = w
-    circle.style.height = w
-    circle.style.background="#000"
-    circle.className =  "circle"
+      } else {
+        setSelectMode(false)
+        canvas.isEraseMode = true
+        canvas.freeDrawingBrush = eraserBrush;
+        $('#erase').addClass('active')
 
-    button = document.createElement("button")
-    button.appendChild(circle)
-    button.onclick = setBrushWidth
-    button.value = w
-    if (w==defaultSize) {
-      button.className = "toolbar active"
-    } else {
-      button.className = "toolbar"
+      }
     }
-    $('#widths').append(button)
-  }
-
-  canvas_el_1 = document.createElement("canvas");
-  canvas_el_1.width = "720";
-  canvas_el_1.height = "480";
-  canvas_el_1.id = "receive-canvas";
-  let canvas_1 = new fabric.Canvas(canvas_el_1);
-  canvas_1.includeDefaultValues = false
+    function unsetErase() {
+      canvas.isEraseMode = false
+      canvas.freeDrawingBrush = brush;
+      $('#erase').removeClass('active')
+    }
 
 
-  //erase board
-  function eraseBoard() {
-    $('#eraseBoard').disabled = true // re-enable when new board received
-    socket.emit('eraseBoard')
-  }
+    function setBrushWidth(event) {
+      unsetErase()
+      setSelectMode(false)
 
-  //undo
-  function undo() {
-    socket.emit('undo')
-  }
-  function redo() {
-    socket.emit('redo')
+      w = this.value
+      brush.abs_width = w
+      brush.width = w/canvas.getZoom()
+
+      $('#widths').children().removeClass('active')
+      this.classList.add('active')
+
+    }
+    for (w of [1,2,5,10,15]) {
+      circle = document.createElement("div")
+      circle.style.width = w
+      circle.style.height = w
+      circle.style.background="#000"
+      circle.className =  "circle"
+
+      button = document.createElement("button")
+      button.appendChild(circle)
+      button.onclick = setBrushWidth
+      button.value = w
+      if (w==defaultSize) {
+        button.className = "toolbar active"
+      } else {
+        button.className = "toolbar"
+      }
+      $('#widths').append(button)
+    }
+
+
+    //erase board
+    function eraseBoard() {
+      $('#eraseBoard').disabled = true // re-enable when new board received
+      socket.emit('eraseBoard')
+    }
+
+    //undo
+    function undo() {
+      socket.emit('undo')
+    }
+    function redo() {
+      socket.emit('redo')
+    }
   }
 
   // reset zoom to include all objects
@@ -299,17 +287,52 @@
   // function sync zoom
   function resetView(){
     canvas.requestRenderAll()
-    brush.width = brush.abs_width/canvas.getZoom()
-    eraserBrush.width  = eraserBrush.abs_width/canvas.getZoom()
+    if (!readonly) {
+      brush.width = brush.abs_width/canvas.getZoom()
+      eraserBrush.width  = eraserBrush.abs_width/canvas.getZoom()
+    }
 
     canvas.forEachObject((o)=> o.setCoords())
   }
+
   function sendViewSync() {
     if (teacherMode) {
       data = {'viewportTransform':canvas.viewportTransform,'zoom':canvas.getZoom(),'width':canvas.width,'height':canvas.height}
       socket.emit('viewSync', data)
       redrawTeacherView(data)
       lastViewSyncData=data
+    }
+  }
+
+  // tracking mode
+  trackingMode = false
+  function setTrackingMode(mode){
+    if (mode === undefined) {
+      mode = !trackingMode
+    }
+    if (mode) {
+      trackingMode = true
+      $('#tracking')[0].style.background = 'green'
+    } else {
+      trackingMode = false
+      $('#tracking')[0].style.background = 'white'
+    }
+  }
+  setTrackingMode(true)
+
+  // teacher mode
+  teacherMode = false
+  function setTeacherMode(){
+    pw = prompt('teacher password') //low tech authentication. If you're my student and a script kiddy, please don't use this to take control of my whiteboard, kthx.
+    if (!teacherMode) {
+      if (pw=='teaching!') {
+        teacherMode = true
+        $('#teacher')[0].style.background = 'green'
+        sendViewSync()
+      }
+    } else {
+      $('#teacher')[0].style.background = 'white'
+      teacherMode = false
     }
   }
 
@@ -402,149 +425,6 @@
 
   // scrolling from http://fabricjs.com/fabric-intro-part-5
 
-
-  canvas.on('mouse:down:before', function(opt) {
-    var evt = opt.e;
-    if (evt.altKey === true || evt.button==2) {
-      this.isDragging = true;
-      this.selection = false;
-      this.lastPosX = evt.clientX;
-      this.lastPosY = evt.clientY;
-      this.wasDrawingMode = this.isDrawingMode
-      this.isDrawingMode = false
-      canvas.discardActiveObject();
-    }
-
-  });
-  canvas.on('mouse:down',function(opt) {
-    if (this.isDragging) {
-      canvas.discardActiveObject();
-    }
-    if (this.isEraseMode) {
-      this.isErasing = true
-      eraseObjs = []
-      lastEraseObj = null
-    }
-  });
-
-  canvas.on('mouse:move', function(opt) {
-    var e = opt.e;
-    if (this.isDragging) {
-      this.viewportTransform[4] += e.clientX - this.lastPosX;
-      this.viewportTransform[5] += e.clientY - this.lastPosY;
-      this.requestRenderAll();
-      this.lastPosX = e.clientX;
-      this.lastPosY = e.clientY;
-    }
-    if (this.isErasing) {
-      if (opt.target != null && opt.target != lastEraseObj) {
-        console.log(opt.target)
-        eraseObjs.push(opt.target)
-        lastEraseObj = opt.target
-      }
-    }
-  });
-  canvas.on('mouse:up', function(opt) {
-    this.selection = true;
-
-
-    if (this.isDragging) {
-      this.isDragging = false;
-      this.isDrawingMode = this.wasDrawingMode
-      resetView()
-      sendViewSync()
-    }
-
-    if (this.isErasing) {
-      this.isErasing = false
-
-      if (eraseObjs.length>0) {
-        eraseObjIDs = []
-        eraseObjs.forEach(function(o) {
-          canvas.remove(o)
-          eraseObjIDs.push(o.id)
-        })
-        socket.emit('objectsErased',eraseObjIDs)
-      }
-
-      eraseObjs = []
-      lastEraseObj = null
-    }
-
-  });
-
-  pasteImage = function (e) {
-          var items=e.originalEvent.clipboardData.items;
-
-          e.preventDefault();
-          e.stopPropagation();
-
-          //Loop through files
-          for(var i=0;i<items.length;i++){
-            if (items[i].type.indexOf('image')== -1) continue;
-            var file = items[i],
-                type = items[i].type;
-            var imageData = file.getAsFile();
-            var fileReader = new FileReader();
-            fileReader.onloadend = function() {
-              $('#uploading')[0].style.visibility='visible'
-              fetch('image-upload', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    image: fileReader.result
-                  })
-                }).then(response => {
-                response.json().then((data)=>{
-                  if (data.url) {
-                    fabric.Image.fromURL(data.url,
-                      function(img){
-
-                        img.originX = 'center'
-                        img.originY = 'center'
-                        img.left = (canvas.width/2 - canvas.viewportTransform[4])/canvas.getZoom()
-                        img.top = (canvas.height/2 - canvas.viewportTransform[5])/canvas.getZoom()
-                        if (img.width >= img.height) {
-                          let rat  = img.height/img.width
-                          img.scaleToWidth(300/canvas.getZoom())
-                          //img.width = 300/canvas.getZoom()
-                          //img.height = 300/canvas.getZoom()*rat
-                        } else {
-                          let rat  = img.height/img.width
-                          img.scaleToHeight(300/canvas.getZoom())
-                          //img.width = 300/canvas.getZoom()/rat
-                          //img.height = 300/canvas.getZoom()
-                        }
-                        canvas.add(img);
-                        img.setCoords()
-                        canvas.isDrawingMode = false
-                        canvas.setActiveObject(img)
-
-                        $('#uploading')[0].style.visibility='hidden'
-                    })
-                  }
-                })
-              })
-            }
-            fileReader.readAsDataURL(imageData);
-
-
-
-
-
-            /*fabric.Image.fromURL(img.src,
-              function(img){
-                img.left = canvas.width/2 - canvas.viewportTransform[4]
-                img.top = canvas.height/2 - canvas.viewportTransform[5]
-                canvas.add(img);
-            });*/
-          }
-        }
-  $(window).on('paste', pasteImage);
-
-
   function multiplyZoom(factor) {
     var zoom = canvas.getZoom();
 
@@ -558,70 +438,213 @@
     sendViewSync()
   }
 
-  var lastWheelTime = 0
-  var delta = 0
-  canvas.on('mouse:wheel', function(opt) {
-    /*
-    delta += opt.e.deltaY
-
-    now = (new Date()).getTime()
-    if (now - lastWheelTime > 1000) {
-      lastWheelTime=now
-    } else if (now - lastWheelTime > 200) {
-      var pointer = canvas.getPointer(opt.e);
-      var zoom = canvas.getZoom();
-
-      zoom = zoom * (1+delta/100);
-      if (zoom > 20) zoom = 20;
-      if (zoom < 0.01) zoom = 0.01;
-      canvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, zoom);
-
-      lastWheelTime = now
-      delta = 0
-
-      resetView()
-      sendViewSync()
-    }*/
-
-    opt.e.preventDefault();
-    opt.e.stopPropagation();
-  });
-
-
-  canvas.on('text:changed',  function(e) {
-    console.log('text:changed')
-    console.log(e)
-  })
-
-  canvas.on('object:modified',  function(e) {
-
-
-    canvas.discardActiveObject() // discard selection to update individual object coordinatess
-
-    if (e.target.type == 'activeSelection') { // a group
-      objs = e.target.getObjects()
-    } else { // an individual object
-      objs = [e.target]
-    }
-
-    let objsJSON = []
-    objs.forEach(function(o) {
-      oJSON = {}
-      for (key of ['id', 'left', 'top','height','width','scaleX','scaleY','skewX','skewY','angle']) {
-        oJSON[key]=o[key]
+  if(!readonly) {
+    canvas.on('mouse:down:before', function(opt) {
+      var evt = opt.e;
+      if (evt.altKey === true || evt.button==2) {
+        this.isDragging = true;
+        this.selection = false;
+        this.lastPosX = evt.clientX;
+        this.lastPosY = evt.clientY;
+        this.wasDrawingMode = this.isDrawingMode
+        this.isDrawingMode = false
+        canvas.discardActiveObject();
       }
-      objsJSON.push(oJSON)
+
+    });
+    canvas.on('mouse:down',function(opt) {
+      if (this.isDragging) {
+        canvas.discardActiveObject();
+      }
+      if (this.isEraseMode) {
+        this.isErasing = true
+        eraseObjs = []
+        lastEraseObj = null
+      }
+    });
+
+    canvas.on('mouse:move', function(opt) {
+      var e = opt.e;
+      if (this.isDragging) {
+        this.viewportTransform[4] += e.clientX - this.lastPosX;
+        this.viewportTransform[5] += e.clientY - this.lastPosY;
+        this.requestRenderAll();
+        this.lastPosX = e.clientX;
+        this.lastPosY = e.clientY;
+      }
+      if (this.isErasing) {
+        if (opt.target != null && opt.target != lastEraseObj) {
+          console.log(opt.target)
+          eraseObjs.push(opt.target)
+          lastEraseObj = opt.target
+        }
+      }
+    });
+    canvas.on('mouse:up', function(opt) {
+      this.selection = true;
+
+
+      if (this.isDragging) {
+        this.isDragging = false;
+        this.isDrawingMode = this.wasDrawingMode
+        resetView()
+        sendViewSync()
+      }
+
+      if (this.isErasing) {
+        this.isErasing = false
+
+        if (eraseObjs.length>0) {
+          eraseObjIDs = []
+          eraseObjs.forEach(function(o) {
+            canvas.remove(o)
+            eraseObjIDs.push(o.id)
+          })
+          socket.emit('objectsErased',eraseObjIDs)
+        }
+
+        eraseObjs = []
+        lastEraseObj = null
+      }
+
+    });
+
+    pasteImage = function (e) {
+            var items=e.originalEvent.clipboardData.items;
+
+            e.preventDefault();
+            e.stopPropagation();
+
+            //Loop through files
+            for(var i=0;i<items.length;i++){
+              if (items[i].type.indexOf('image')== -1) continue;
+              var file = items[i],
+                  type = items[i].type;
+              var imageData = file.getAsFile();
+              var fileReader = new FileReader();
+              fileReader.onloadend = function() {
+                $('#uploading')[0].style.visibility='visible'
+                fetch('image-upload', {
+                  method: 'POST',
+                  headers: {
+                      'Content-Type': 'application/json'
+                  },
+                  body: JSON.stringify({
+                      image: fileReader.result
+                    })
+                  }).then(response => {
+                  response.json().then((data)=>{
+                    if (data.url) {
+                      fabric.Image.fromURL(data.url,
+                        function(img){
+
+                          img.originX = 'center'
+                          img.originY = 'center'
+                          img.left = (canvas.width/2 - canvas.viewportTransform[4])/canvas.getZoom()
+                          img.top = (canvas.height/2 - canvas.viewportTransform[5])/canvas.getZoom()
+                          if (img.width >= img.height) {
+                            let rat  = img.height/img.width
+                            img.scaleToWidth(300/canvas.getZoom())
+                            //img.width = 300/canvas.getZoom()
+                            //img.height = 300/canvas.getZoom()*rat
+                          } else {
+                            let rat  = img.height/img.width
+                            img.scaleToHeight(300/canvas.getZoom())
+                            //img.width = 300/canvas.getZoom()/rat
+                            //img.height = 300/canvas.getZoom()
+                          }
+                          canvas.add(img);
+                          img.setCoords()
+                          canvas.isDrawingMode = false
+                          canvas.setActiveObject(img)
+
+                          $('#uploading')[0].style.visibility='hidden'
+                      })
+                    }
+                  })
+                })
+              }
+              fileReader.readAsDataURL(imageData);
+
+
+
+
+
+              /*fabric.Image.fromURL(img.src,
+                function(img){
+                  img.left = canvas.width/2 - canvas.viewportTransform[4]
+                  img.top = canvas.height/2 - canvas.viewportTransform[5]
+                  canvas.add(img);
+              });*/
+            }
+          }
+    $(window).on('paste', pasteImage);
+
+    var lastWheelTime = 0
+    var delta = 0
+    canvas.on('mouse:wheel', function(opt) {
+      /*
+      delta += opt.e.deltaY
+
+      now = (new Date()).getTime()
+      if (now - lastWheelTime > 1000) {
+        lastWheelTime=now
+      } else if (now - lastWheelTime > 200) {
+        var pointer = canvas.getPointer(opt.e);
+        var zoom = canvas.getZoom();
+
+        zoom = zoom * (1+delta/100);
+        if (zoom > 20) zoom = 20;
+        if (zoom < 0.01) zoom = 0.01;
+        canvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, zoom);
+
+        lastWheelTime = now
+        delta = 0
+
+        resetView()
+        sendViewSync()
+      }*/
+
+      opt.e.preventDefault();
+      opt.e.stopPropagation();
+    });
+
+
+    canvas.on('text:changed',  function(e) {
+      console.log('text:changed')
+      console.log(e)
     })
 
-    //reactivate selection
-    var sel = new fabric.ActiveSelection(objs, {
-            canvas: canvas,
-          });
-    canvas.setActiveObject(sel);
+    canvas.on('object:modified',  function(e) {
 
-    socket.emit('objectsModified',objsJSON)
 
-  })
+      canvas.discardActiveObject() // discard selection to update individual object coordinatess
+
+      if (e.target.type == 'activeSelection') { // a group
+        objs = e.target.getObjects()
+      } else { // an individual object
+        objs = [e.target]
+      }
+
+      let objsJSON = []
+      objs.forEach(function(o) {
+        oJSON = {}
+        for (key of ['id', 'left', 'top','height','width','scaleX','scaleY','skewX','skewY','angle']) {
+          oJSON[key]=o[key]
+        }
+        objsJSON.push(oJSON)
+      })
+
+      //reactivate selection
+      var sel = new fabric.ActiveSelection(objs, {
+              canvas: canvas,
+            });
+      canvas.setActiveObject(sel);
+
+      socket.emit('objectsModified',objsJSON)
+
+    })
+  }
 
   socket.on('objectsModified',function(e) {
     console.log('objectsModified')
@@ -765,7 +788,6 @@
     $('#eraseBoard').disabled = false // re-enable erase when new board received
   })
 
-  let urlParams = new URLSearchParams(window.location.search);
   socket.emit('joinBoard', {'boardid':urlParams.get('boardid')})
 
 </script>
