@@ -54,8 +54,10 @@
         <button id='eraseBoard' class='toolbar' onclick='javascript:eraseBoard()'>🗑</button><br/> \
         <button id='undo' class='toolbar' onclick='javascript:undo()'>⟲</button> \
         <button id='redo' class='toolbar' onclick='javascript:redo()'>⟳</button><br/> \
-        <button id='teacher' class='toolbar' onclick='javascript:setTeacherMode()'>🎓</button><br/> \
-      </div>")
+        <button id='teacher' class='toolbar' onclick='javascript:setTeacherMode()'>🎓</button><br/>\
+        <button id='teacher' class='toolbar' onclick='javascript:cloneBoard()'>⎘</button><br/>\
+      </div>\
+      ")
   }
   </script>
 
@@ -94,6 +96,14 @@
   canvas.includeDefaultValues = false
   canvas.targetFindTolerance = 10
 
+  fabric.Text.prototype.set({
+    _getNonTransformedDimensions() { // Object dimensions
+      return new fabric.Point(this.width, this.height).scalarAdd(this.padding);
+    },
+    _calculateCurrentDimensions() { // Controls dimensions
+      return fabric.util.transformPoint(this._getTransformedDimensions(), this.getViewportTransform(), true);
+    }
+  });
 
   let viewObj = null
 
@@ -114,6 +124,9 @@
     canvas.freeDrawingBrush = brush;
 
 
+    function cloneBoard() {
+      window.open("cloneBoard?boardid="+urlParams.get('boardid'),"_blank")
+    }
 
 
     function setBrushColor(event) {
@@ -142,9 +155,20 @@
     }
 
     function addText() {
-      txt=new fabric.IText('...')
+      txt=new fabric.IText('...',{fontSize:24/canvas.getZoom(), backgroundColor:'#ffffdd','padding':10})
+      txt.originX = 'center'
+      txt.originY = 'center'
+      txt.left = (canvas.width/2 - canvas.viewportTransform[4])/canvas.getZoom()
+      txt.top = (canvas.height/2 - canvas.viewportTransform[5])/canvas.getZoom()
+      txt.setShadow({ color: 'rgba(0,0,0,0.3)',
+                      blur: 2,
+                      offsetX: 3,
+                      offsetY: 3 });
       canvas.add(txt)
+      txt.setCoords()
       canvas.isDrawingMode = false
+      txt.enterEditing()
+      txt.selectAll()
       canvas.setActiveObject(txt)
     }
 
@@ -611,12 +635,17 @@
 
 
     canvas.on('text:changed',  function(e) {
+
       console.log('text:changed')
       console.log(e)
+
+      e.target.setCoords()
     })
 
     canvas.on('object:modified',  function(e) {
 
+      console.log('object:modified:\n' + e)
+      console.log(e.target.getBoundingRect())
 
       canvas.discardActiveObject() // discard selection to update individual object coordinatess
 
@@ -628,18 +657,26 @@
 
       let objsJSON = []
       objs.forEach(function(o) {
+
         oJSON = {}
-        for (key of ['id', 'left', 'top','height','width','scaleX','scaleY','skewX','skewY','angle']) {
-          oJSON[key]=o[key]
+        for (key of ['id', 'left', 'top','height','width','scaleX','scaleY','skewX','skewY','angle','text']) {
+          if (key in o) {
+            oJSON[key]=o[key]
+          }
         }
         objsJSON.push(oJSON)
       })
 
       //reactivate selection
-      var sel = new fabric.ActiveSelection(objs, {
-              canvas: canvas,
-            });
+      if (objs.length > 1) {
+        var sel = new fabric.ActiveSelection(objs, {
+                canvas: canvas,
+              });
+      } else {
+        var sel = objs[0]
+      }
       canvas.setActiveObject(sel);
+
 
       socket.emit('objectsModified',objsJSON)
 
@@ -676,7 +713,7 @@
       return
     } else {
       o = e.target
-      oJSON = e.target.toJSON()
+      oJSON = e.target.toJSON(['padding'])
 
       if (this.isEraseMode) {
         o.globalCompositeOperation = 'destination-out'

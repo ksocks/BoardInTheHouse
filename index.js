@@ -51,6 +51,8 @@ app.post("/image-upload", (request, response) => {
     });
 });
 
+
+
 class sharedBoardManager {
   constructor() {
     this.boards = [] // boardid->sharedBoard mapping
@@ -73,7 +75,8 @@ class sharedBoardManager {
     if (!(data.boardid in this.boards)) { //  try to load board
       this.boards[data.boardid] = new sharedBoard(data.boardid) // create new board object
       let that = this
-      this.boards[data.boardid].loadBoard(boardspath+data.boardid+".brd", function () {
+      console.log('loading board '+ data.boardid+".brd")
+      this.boards[data.boardid].loadBoard(data.boardid+".brd", function () {
         that.users[socket.id]=data.boardid
         let board = that.getBoard(socket)
         socket.join(data.boardid)
@@ -167,7 +170,7 @@ class sharedBoard {
     } */
 
     var params={
-     Key:    this.boardid+'.brd',
+     Key:    filename,
      Bucket: process.env.BUCKETEER_BUCKET_NAME
     }
 
@@ -191,7 +194,7 @@ class sharedBoard {
 
   }
 
-  saveBoard() {
+  saveBoard(callback) {
     /*
     try {
       fs.writeFileSync(filename, JSON.stringify(this.canvas.toDatalessJSON(['id'])))
@@ -203,7 +206,7 @@ class sharedBoard {
         {
          Key:    this.boardid+'.brd',
          Bucket: process.env.BUCKETEER_BUCKET_NAME,
-         Body:   JSON.stringify(this.canvas.toDatalessJSON(['id'])),
+         Body:   JSON.stringify(this.canvas.toDatalessJSON(['id','padding'])),
          ContentType: 'application/json; charset=utf-8'
         }, function put(err, data) {
               if (err) {
@@ -212,6 +215,9 @@ class sharedBoard {
               } else {
                 console.log('S3 save successful!')
                 console.log(data);
+              }
+              if (callback) {
+                callback()
               }
             }
         )
@@ -235,17 +241,17 @@ class sharedBoard {
 
   onJoin(socket,data) {
     socket.emit('clientID', this.getNextClientID())
-    socket.emit('canvasdata',this.canvas.toDatalessJSON(['id']))
+    socket.emit('canvasdata',this.canvas.toDatalessJSON(['id','padding']))
     socket.emit('viewSync', this.lastViewSyncData)
   }
 
   onEraseBoard(socket,data) {
-    this.history.push(['eraseBoard',this.canvas.toDatalessJSON(['id'])])
+    this.history.push(['eraseBoard',this.canvas.toDatalessJSON(['id','padding'])])
     this.redohistory = [] // clear redo history on new action
 
     this.canvas.clear()
 
-    this.getRoom().emit('canvasdata',this.canvas.toDatalessJSON(['id']))
+    this.getRoom().emit('canvasdata',this.canvas.toDatalessJSON(['id','padding']))
 
     this.autosave()
   }
@@ -383,7 +389,7 @@ class sharedBoard {
         let that = this
         this.canvas.loadFromDatalessJSON(act[1], function() {
           that.canvas.forEachObject((o)=>that.objectsByID[o.id]=o)   //reset id list
-          that.getRoom().emit('canvasdata',that.canvas.toDatalessJSON(['id']))
+          that.getRoom().emit('canvasdata',that.canvas.toDatalessJSON(['id','padding']))
           that.redohistory.push(['eraseBoard',null])
           that.autosave()
         })
@@ -404,7 +410,7 @@ class sharedBoard {
         this.onObjectsModified(null,act[1],'redo')
       } else if (act[0]=='eraseBoard') {
         this.canvas.clear()
-        this.getRoom().emit('canvasdata',this.canvas.toDatalessJSON(['id']))
+        this.getRoom().emit('canvasdata',this.canvas.toDatalessJSON(['id','padding']))
         this.history.push(act)
       }
 
@@ -447,7 +453,17 @@ app.get('/domtoimage', function(req, res) {
 
 });
 
-
+// clone board API
+app.get("/cloneboard", (req, res) => {
+  boardid = uniqid()
+  newboard = new sharedBoard(boardid) // create new board object
+  console.log('Cloning '+req.query['boardid']+".brd")
+  newboard.loadBoard(req.query['boardid']+".brd", function () {
+    newboard.saveBoard( function () {
+      res.redirect('/board.html?boardid='+boardid)
+    })
+  })
+})
 
 
 bm  = new sharedBoardManager()
