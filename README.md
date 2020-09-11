@@ -25,6 +25,10 @@ This is a collaborative multi-user vector-graphics whiteboard built with web soc
 
 Other features from fabricjs can be easily added with the message-based websockets interface.
 
+## Controls
+
+![controls](controls.png)
+
 ## Run Locally
 
     npm start
