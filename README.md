@@ -2,15 +2,15 @@
 
 ## Description
 
-I was bored in the house
-In the house bored
-wrote a whiteboard that's remote
-since we're all in the house bored
-Board in the house
-Board in the house
-Board!
+    I was bored in the house.
+    In the house bored.
+    wrote a whiteboard that's remote
+    since we're all in the house bored
+    Board in the house
+    Board in the house
+    Board!
 
-This is a collaborative multi-user vector-graphics whiteboard built with web sockets on top of fabricJS, designed for in-class use, remote problem solving sessions, and zoom office hours. 
+This is a collaborative multi-user vector-graphics whiteboard built with web sockets on top of fabricJS, designed for in-class use, remote problem solving sessions, and zoom office hours.
 
 ## Features
 
@@ -27,9 +27,8 @@ Other features from fabricjs can be easily added with the message-based websocke
 
 ## Run Locally
 
-npm start
+    npm start
 
 Navigating to the board will automatically create a new blank board.
 
  (image upload and persistent saving won't work when running locally unless you set-up the environment variables for cloudinary & bucketeer -- it's simple to add a local file storage mode though )
-
