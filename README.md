@@ -14,7 +14,7 @@ This is a collaborative multi-user vector-graphics whiteboard built with web soc
 
 ## Demo
 
-https://stylusboard.herokuapp.com/(see controls description below)
+https://stylusboard.herokuapp.com/ (see controls description below)
 
 ## Features
 
