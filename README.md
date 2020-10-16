@@ -12,6 +12,10 @@
 
 This is a collaborative multi-user vector-graphics whiteboard built with web sockets on top of fabricJS, designed for in-class use, remote problem solving sessions, and zoom office hours.
 
+## Demo
+
+https://stylusboard.herokuapp.com/(see controls description below)
+
 ## Features
 
 + Infinite Scroll / Zoom
